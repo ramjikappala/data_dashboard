@@ -1,0 +1,35 @@
+name: Cloud Code Runner
+
+# When should the robot run?
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Allows you to click a button to run it manually
+
+# Give the robot permission to save files back to your repo
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # This is the cloud computer
+    
+    steps:
+      - name: Grab my project files
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run my Python script!
+        run: python build_dashboard.py
+
+      - name: Save the new website to GitHub
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Robot auto-updated the dashboard" || echo "No changes to commit"
+          git push
