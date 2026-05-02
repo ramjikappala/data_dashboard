@@ -1,31 +1,40 @@
 name: Cloud Code Runner
 
-# When should the robot run?
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: # Allows you to click a button to run it manually
+  schedule:
+    - cron: '30 13 * * *' # Runs daily at 7:00 PM IST
+  workflow_dispatch: 
 
-# Give the robot permission to save files back to your repo
 permissions:
   contents: write
 
 jobs:
   build:
-    runs-on: ubuntu-latest # This is the cloud computer
+    runs-on: ubuntu-latest
     
     steps:
       - name: Grab my project files
         uses: actions/checkout@v4
 
+      # 1. SETUP PYTHON
       - name: Install Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
+      # 2. INSTALL LIBRARIES (CRITICAL STEP)
+      - name: Install Libraries
+        run: |
+          pip install requests pandas openpyxl
+
+      # 3. RUN THE SCRIPT
       - name: Run my Python script!
+        # NOTE: Make sure your script file is actually named build_dashboard.py
         run: python build_dashboard.py
 
+      # 4. SAVE THE RESULTS
       - name: Save the new website to GitHub
         run: |
           git config --global user.name "github-actions[bot]"
