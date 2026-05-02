@@ -1,0 +1,37 @@
+import requests
+import pandas as pd
+from datetime import datetime
+from io import BytesIO
+import os
+
+# ==========================================
+# DATE: blank = today automatically
+custom_date = "29042026"
+# ==========================================
+
+if custom_date:
+    target_date = custom_date
+else:
+    target_date = datetime.now().strftime("%d%m%Y")
+
+print(f"Fetching NSE data for {target_date}...")
+
+url = f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{target_date}.csv"
+
+response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+
+if response.status_code == 200:
+    df = pd.read_csv(BytesIO(response.content))
+    df.columns = df.columns.str.strip()
+    df['SERIES'] = df['SERIES'].astype(str).str.strip()
+    filtered_df = df[df['SERIES'] == 'EQ']
+
+    os.makedirs("data", exist_ok=True)
+    output_filename = f"data/NSE_EQ_Data_{target_date}.xlsx"
+    filtered_df.to_excel(output_filename, index=False)
+
+    print(f"Success! Saved {len(filtered_df)} rows to '{output_filename}'.")
+else:
+    print(f"Failed. HTTP Status: {response.status_code}")
+    print("Market may have been closed on this date.")
+    exit(1)
