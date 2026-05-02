@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NSE Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #0d0d0d; color: #eee; padding: 20px; }
+  h1 { color: #00ff88; margin-bottom: 6px; font-size: 1.6rem; }
+  .subtitle { color: #888; font-size: 0.8rem; margin-bottom: 20px; }
+
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+  input[type="date"] {
+    background: #1a1a1a; border: 1px solid #333; color: #eee;
+    padding: 9px 14px; border-radius: 6px; font-size: 0.9rem;
+  }
+  button {
+    background: #00ff88; color: #000; border: none;
+    padding: 9px 20px; border-radius: 6px; font-weight: bold;
+    cursor: pointer; font-size: 0.9rem;
+  }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #status {
+    padding: 10px 16px; border-radius: 6px; margin-bottom: 20px;
+    font-size: 0.85rem; display: none; border: 1px solid #333; background: #1a1a1a;
+  }
+  #status.ok  { border-color: #00ff88; color: #00ff88; }
+  #status.err { border-color: #ff4444; color: #ff4444; }
+  #status.loading { border-color: #4d9fff; color: #4d9fff; }
+
+  .cards { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 24px; }
+  .card {
+    background: #1a1a1a; border: 1px solid #2a2a2a;
+    border-radius: 8px; padding: 16px 20px; min-width: 140px;
+  }
+  .card-label { font-size: 0.68rem; color: #888; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+  .card-value { font-size: 1.7rem; font-weight: bold; color: #00ff88; }
+  .card-value.red { color: #ff4444; }
+
+  .search-row { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  #searchBox {
+    background: #1a1a1a; border: 1px solid #333; color: #eee;
+    padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; width: 220px;
+  }
+  #searchBox::placeholder { color: #555; }
+
+  .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #222; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+  thead th {
+    background: #1a1a1a; color: #888; padding: 11px 13px;
+    text-align: right; font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: .07em; cursor: pointer; white-space: nowrap;
+    position: sticky; top: 0; border-bottom: 1px solid #2a2a2a;
+  }
+  thead th:first-child { text-align: left; }
+  thead th:hover { color: #00ff88; }
+  tbody tr:hover { background: #1a1a1a; }
+  tbody td { padding: 10px 13px; text-align: right; border-bottom: 1px solid #1a1a1a; white-space: nowrap; }
+  tbody td:first-child { text-align: left; font-weight: bold; color: #4d9fff; }
+  .up   { color: #00ff88; }
+  .down { color: #ff4444; }
+
+  #empty { text-align: center; padding: 60px 20px; color: #555; display: none; }
+</style>
+</head>
+<body>
+
+<h1>📊 NSE Market Dashboard</h1>
+<p class="subtitle">Select a trading date → Load Data → See all EQ stocks</p>
+
+<div class="controls">
+  <input type="date" id="datePicker">
+  <button id="loadBtn" onclick="loadData()">Load Data</button>
+</div>
+
+<div id="status"></div>
+
+<div class="cards" id="cards" style="display:none">
+  <div class="card">
+    <div class="card-label">Total EQ Stocks</div>
+    <div class="card-value" id="c-total">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Gainers</div>
+    <div class="card-value" id="c-gain">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Losers</div>
+    <div class="card-value red" id="c-loss">—</div>
+  </div>
+</div>
+
+<div class="search-row" id="searchRow" style="display:none">
+  <input id="searchBox" type="text" placeholder="Search symbol..." oninput="filterTable()">
+  <span id="rowCount" style="color:#555;font-size:0.8rem"></span>
+</div>
+
+<div class="table-wrap" id="tableWrap" style="display:none">
+  <table>
+    <thead>
+      <tr>
+        <th onclick="sortBy('SYMBOL')">Symbol</th>
+        <th onclick="sortBy('OPEN')">Open</th>
+        <th onclick="sortBy('HIGH')">High</th>
+        <th onclick="sortBy('LOW')">Low</th>
+        <th onclick="sortBy('CLOSE')">Close</th>
+        <th onclick="sortBy('PREVCLOSE')">Prev Close</th>
+        <th onclick="sortBy('chg')">Chg %</th>
+        <th onclick="sortBy('TOTTRDQTY')">Volume</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<div id="empty">No data. Try a different date.</div>
+
+<script>
+let allRows = [], filtered = [], sortKey = '', sortAsc = true;
+
+// Set default date = last weekday
+(function() {
+  let d = new Date();
+  d.setDate(d.getDate() - 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+  document.getElementById('datePicker').value = d.toISOString().split('T')[0];
+})();
+
+function setStatus(msg, type) {
+  const s = document.getElementById('status');
+  s.textContent = msg; s.className = type; s.style.display = 'block';
+}
+
+async function loadData() {
+  const val = document.getElementById('datePicker').value;
+  if (!val) { alert('Pick a date first'); return; }
+
+  const [y, m, d] = val.split('-');
+  const dateStr = d + m + y;
+
+  const nseUrl   = `https://archives.nseindia.com/products/content/sec_bhavdata_full_${dateStr}.csv`;
+  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(nseUrl)}`;
+
+  setStatus(`⏳ Downloading NSE data for ${d}-${m}-${y}...`, 'loading');
+  document.getElementById('loadBtn').disabled = true;
+  hide();
+
+  try {
+    const res = await fetch(proxyUrl);
+    if (!res.ok) throw new Error('Network error ' + res.status);
+    const csv = await res.text();
+    if (!csv || csv.length < 500) throw new Error('Empty response — market may have been closed');
+
+    Papa.parse(csv, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: h => h.trim(),
+      complete(result) {
+        allRows = result.data
+          .filter(r => r.SERIES && r.SERIES.trim() === 'EQ')
+          .map(r => {
+            const c = +r.CLOSE || 0, p = +r.PREVCLOSE || 0;
+            r.chg = p ? ((c - p) / p * 100) : 0;
+            return r;
+          });
+
+        if (!allRows.length) throw new Error('No EQ stocks found for this date');
+
+        filtered = [...allRows];
+        render(d, m, y);
+        setStatus(`✅ Loaded ${allRows.length} EQ stocks for ${d}-${m}-${y}`, 'ok');
+      }
+    });
+  } catch(e) {
+    setStatus('❌ ' + e.message, 'err');
+    document.getElementById('empty').style.display = 'block';
+  } finally {
+    document.getElementById('loadBtn').disabled = false;
+  }
+}
+
+function hide() {
+  ['cards','searchRow','tableWrap'].forEach(id => document.getElementById(id).style.display = 'none');
+  document.getElementById('empty').style.display = 'none';
+}
+
+function render(d, m, y) {
+  const gain = allRows.filter(r => r.chg > 0).length;
+  const loss = allRows.filter(r => r.chg < 0).length;
+  document.getElementById('c-total').textContent = allRows.length;
+  document.getElementById('c-gain').textContent  = gain;
+  document.getElementById('c-loss').textContent  = loss;
+  document.getElementById('cards').style.display = 'flex';
+  document.getElementById('searchRow').style.display = 'flex';
+  document.getElementById('tableWrap').style.display = 'block';
+  document.getElementById('searchBox').value = '';
+  drawTable();
+}
+
+function drawTable() {
+  const body = document.getElementById('tbody');
+  body.innerHTML = filtered.map(r => {
+    const chg = r.chg, cls = chg > 0 ? 'up' : chg < 0 ? 'down' : '';
+    const sign = chg > 0 ? '+' : '';
+    return `<tr>
+      <td>${r.SYMBOL||'—'}</td>
+      <td>${fmt(r.OPEN)}</td>
+      <td>${fmt(r.HIGH)}</td>
+      <td>${fmt(r.LOW)}</td>
+      <td class="${cls}">${fmt(r.CLOSE)}</td>
+      <td>${fmt(r.PREVCLOSE)}</td>
+      <td class="${cls}">${sign}${chg.toFixed(2)}%</td>
+      <td>${fmtVol(r.TOTTRDQTY)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('rowCount').textContent = `Showing ${filtered.length} of ${allRows.length} stocks`;
+}
+
+function filterTable() {
+  const q = document.getElementById('searchBox').value.toUpperCase().trim();
+  filtered = q ? allRows.filter(r => (r.SYMBOL||'').includes(q)) : [...allRows];
+  drawTable();
+}
+
+function sortBy(key) {
+  if (sortKey === key) sortAsc = !sortAsc; else { sortKey = key; sortAsc = true; }
+  filtered.sort((a, b) => {
+    const av = isNaN(+a[key]) ? (a[key]||'') : +a[key];
+    const bv = isNaN(+b[key]) ? (b[key]||'') : +b[key];
+    return sortAsc ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
+  });
+  drawTable();
+}
+
+function fmt(v)    { return isNaN(+v) ? '—' : (+v).toFixed(2); }
+function fmtVol(v) {
+  const n = +v||0;
+  if (n >= 1e7) return (n/1e7).toFixed(1)+'Cr';
+  if (n >= 1e5) return (n/1e5).toFixed(1)+'L';
+  return n.toLocaleString('en-IN');
+}
+</script>
+</body>
+</html>
