@@ -3,45 +3,62 @@ import pandas as pd
 from datetime import datetime
 from io import BytesIO
 
-# 1. FETCH DATA
-target_date = datetime.now().strftime("%d%m%Y")
+# ==========================================
+# TRIAL SETTING: Using April 30, 2026
+# ==========================================
+target_date = "30042026" 
+print(f"Starting trial run for date: {target_date}")
+
+# 1. FETCH DATA FROM NSE
 url = f"https://nseindia.com_{target_date}.csv"
-response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+
+response = requests.get(url, headers=headers)
 
 if response.status_code == 200:
+    # Load data
     df = pd.read_csv(BytesIO(response.content))
     df.columns = df.columns.str.strip()
+    
+    # Filter for Equity (EQ) only
     filtered_df = df[df['SERIES'].astype(str).str.strip() == 'EQ']
-    # Create the HTML table from data
+    
+    # Take top 20 rows for the display
     stock_table = filtered_df.head(20).to_html(index=False, classes='data-table')
-    message = f"Displaying top 20 stocks for {target_date}"
+    message = f"✅ Success! Displaying top 20 stocks for Trial Date: 30-04-2026"
+    status_color = "#4CAF50"
 else:
-    stock_table = "<h2>Market is closed or data unavailable today.</h2>"
-    message = "NSE Fetch Failed"
+    stock_table = "<h2>No data found for this date.</h2>"
+    message = f"❌ Failed to fetch data. Error code: {response.status_code}"
+    status_color = "#FF5252"
 
-# 2. CREATE DASHBOARD LOOK
+# 2. CREATE THE DASHBOARD HTML
 html_content = f"""
 <!DOCTYPE html>
 <html>
 <head>
-    <title>NSE Dashboard</title>
+    <title>Trial Dashboard</title>
     <style>
-        body {{ font-family: Arial; text-align: center; background: #121212; color: white; }}
-        .data-table {{ margin: 20px auto; border-collapse: collapse; background: #1e1e1e; color: white; }}
-        th {{ background: #4CAF50; padding: 12px; }}
+        body {{ font-family: 'Segoe UI', Arial; text-align: center; background: #121212; color: white; padding: 20px; }}
+        .status-box {{ background: {status_color}; padding: 10px; border-radius: 5px; display: inline-block; margin-bottom: 20px; }}
+        .data-table {{ margin: 0 auto; border-collapse: collapse; background: #1e1e1e; font-size: 0.9em; }}
+        th {{ background: #333; color: #4CAF50; padding: 12px; border: 1px solid #444; }}
         td {{ border: 1px solid #333; padding: 8px; }}
+        tr:hover {{ background-color: #252525; }}
     </style>
 </head>
 <body>
-    <h1>ߓ My NSE Cloud Dashboard</h1>
-    <p>{message}</p>
+    <h1>ߚ NSE Trial Dashboard</h1>
+    <div class="status-box">{message}</div>
+    <br>
     {stock_table}
-    <p>Last Update: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+    <p style="margin-top: 30px; color: #888;">Robot Run Time (IST): {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
 </body>
 </html>
 """
 
-# 3. SAVE THE DASHBOARD
+# 3. SAVE AS INDEX.HTML
 with open("index.html", "w") as file:
     file.write(html_content)
 
+print("Dashboard built successfully for the trial!")
